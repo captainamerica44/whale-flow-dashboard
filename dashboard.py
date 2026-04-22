@@ -73,6 +73,9 @@ if "ITM/OTM" in df.columns:
 if selected_ticker != "All":
     filtered_df = filtered_df[filtered_df['Ticker'] == selected_ticker]
 
+st.sidebar.divider()
+st.sidebar.markdown("Enjoying the data? [☕ Buy me a coffee!](https://buymeacoffee.com/deepchartlabs)")
+
 # 3. Create Tabs for DTE Buckets
 st.subheader("Total Premium by Ticker (Calls vs Puts)")
 tab1, tab2, tab3 = st.tabs(["0-7 Days (Immediate)", "8-45 Days (Tactical)", "45+ Days (Strategic)"])
