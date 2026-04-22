@@ -62,6 +62,14 @@ filtered_df = df.copy()
 tickers = ["All"] + sorted(filtered_df['Ticker'].dropna().unique().tolist())
 selected_ticker = st.sidebar.selectbox("Filter by Ticker", tickers)
 
+# 2.5 Moneyness Filter (ITM/OTM)
+if "ITM/OTM" in df.columns:
+    moneyness_options = ["All", "ITM", "OTM"]
+    selected_moneyness = st.sidebar.selectbox("Filter by Moneyness", moneyness_options)
+    
+    if selected_moneyness != "All":
+        filtered_df = filtered_df[filtered_df['ITM/OTM'] == selected_moneyness]
+
 if selected_ticker != "All":
     filtered_df = filtered_df[filtered_df['Ticker'] == selected_ticker]
 
