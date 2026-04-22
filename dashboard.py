@@ -117,5 +117,5 @@ with tab3:
 # 4. Data Table
 st.divider()
 st.subheader("Filtered Whale Sweeps")
-display_cols = [c for c in ["Ticker", "Type", "Strike", "Expiration", "DTE Bucket", "Premium", "Volume", "Open Interest", "Time"] if c in filtered_df.columns]
+display_cols = [c for c in ["Ticker", "Type", "Strike", "Closing Price", "ITM/OTM", "Expiration", "DTE Bucket", "Premium", "Volume", "Open Interest", "Time"] if c in filtered_df.columns]
 st.dataframe(filtered_df[display_cols].iloc[::-1], use_container_width=True, hide_index=True)
