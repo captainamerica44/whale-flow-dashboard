@@ -62,30 +62,27 @@ def load_data():
 
         
 
-        # Calculate Days to Expiration (DTE)
-
-        df['Expiration Date'] = pd.to_datetime(df['Expiration'], errors='coerce')
-
-        today = pd.to_datetime('today')
-
-        df['DTE'] = (df['Expiration Date'] - today).dt.days
-
-        
-
-        # EXACT BUCKETING AS REQUESTED
-
-        def categorize_term(dte):
-
-            if pd.isna(dte): return "Unknown"
-
-            if dte <= 7: return "0-7 Days (Immediate)"
-
-            if dte <= 45: return "8-45 Days (Tactical)"
-
-            return "45+ Days (Strategic)"
-
+     # Calculate Days to Expiration (DTE) - SAFE MATH VERSION
+        try:
+            # 1. Clean the text and make a hidden date column just for math
+            clean_dates = df['Expiration'].astype(str).str.strip()
+            df['Math_Date'] = pd.to_datetime(clean_dates, errors='coerce')
             
-
+            # 2. Get today's date safely without timezone conflicts
+            today = pd.Timestamp.now().normalize()
+            
+            # 3. Calculate DTE
+            df['DTE'] = (df['Math_Date'] - today).dt.days
+        except Exception:
+            df['DTE'] = None # Safety net so the app never goes blank
+            
+        # EXACT BUCKETING AS REQUESTED
+        def categorize_term(dte):
+            if pd.isna(dte): return "Unknown"
+            if dte <= 7: return "0-7 Days (Immediate)"
+            if dte <= 45: return "8-45 Days (Tactical)"
+            return "45+ Days (Strategic)"
+            
         df['DTE Bucket'] = df['DTE'].apply(categorize_term)
 
         return df
