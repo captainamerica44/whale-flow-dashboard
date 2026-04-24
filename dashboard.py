@@ -122,12 +122,21 @@ def draw_bucket_chart(bucket_name):
             color_discrete_map={"Call": "#3182ce", "Put": "#e53e3e"} # Blue for Calls, Red for Puts
         )
         
-        # Clean up the layout and sort so the biggest bars are at the top
+        # --- NEW FIX: Dynamic Height and dtick ---
+        # Calculate dynamic height so labels don't overlap on busy days
+        num_tickers = len(chart_data['Ticker'].unique())
+        dynamic_height = max(400, num_tickers * 30) # Gives 30 pixels of breathing room per ticker
+        
+        # Clean up the layout and force ALL y-axis labels to show
         fig.update_layout(
-            yaxis={'categoryorder':'total ascending'},
+            yaxis={
+                'categoryorder':'total ascending',
+                'dtick': 1  # <-- This forces EVERY single ticker label to appear
+            },
             xaxis_title="Premium Value ($)",
             yaxis_title="",
-            margin=dict(l=0, r=0, t=20, b=0)
+            margin=dict(l=0, r=0, t=20, b=0),
+            height=dynamic_height # <-- Stretches the chart taller as more whales flow in
         )
         
         st.plotly_chart(fig, use_container_width=True)
