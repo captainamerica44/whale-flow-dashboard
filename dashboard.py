@@ -54,7 +54,14 @@ with main_tab_options:
             return df
         except Exception:
             return pd.DataFrame()
-st.sidebar.markdown(
+df = load_data()
+
+    if df.empty:
+        st.warning("Waiting for data. Ensure flow_tracker.py is running and updating Google Sheets!")
+    else:
+        st.sidebar.header("Options Controls")
+        
+        st.sidebar.markdown(
             """
             <div style="text-align: center; margin-bottom: 20px;">
                 <a href="https://buymeacoffee.com/deepchartlabs" target="_blank">
@@ -64,12 +71,6 @@ st.sidebar.markdown(
             """,
             unsafe_allow_html=True
         )
-    df = load_data()
-
-    if df.empty:
-        st.warning("Waiting for data. Ensure flow_tracker.py is running and updating Google Sheets!")
-    else:
-        st.sidebar.header("Options Controls")
         
         filtered_df = df.copy()
         
