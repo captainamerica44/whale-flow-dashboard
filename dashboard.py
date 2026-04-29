@@ -54,7 +54,8 @@ with main_tab_options:
             return df
         except Exception:
             return pd.DataFrame()
-df = load_data()
+
+    df = load_data()
 
     if df.empty:
         st.warning("Waiting for data. Ensure flow_tracker.py is running and updating Google Sheets!")
