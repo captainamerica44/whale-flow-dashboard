@@ -54,7 +54,16 @@ with main_tab_options:
             return df
         except Exception:
             return pd.DataFrame()
-
+st.sidebar.markdown(
+            """
+            <div style="text-align: center; margin-bottom: 20px;">
+                <a href="https://buymeacoffee.com/deepchartlabs" target="_blank">
+                    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="150" >
+                </a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
     df = load_data()
 
     if df.empty:
