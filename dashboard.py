@@ -1,157 +1,196 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import requests
+import json
+from datetime import datetime, timedelta
+import os
 
-# Set the page layout to wide
-st.set_page_config(page_title="Whale Flow Dashboard", layout="wide")
-st.title("🐋 Whale Flow Dashboard")
+# --- 1. PAGE SETUP (Must be the very first Streamlit command) ---
+st.set_page_config(page_title="Master Whale Terminal", layout="wide", page_icon="🐋")
+st.title("🐋 Master Institutional Trading Terminal")
 
-@st.cache_data(ttl=60)
-def load_data():
-    try:
-        # Swap YOUR_SHEET_ID with the ID you copied in Phase 1
-        SHEET_ID = "1goGTrEiqm7IYhD8mSZSBF2-kURu1MA55xYnvUH1sqhA" 
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
-        df = pd.read_csv(url)
-        
-        def clean_number(val):
-            if pd.isna(val): return 0
-            val = str(val).replace('$', '').replace(',', '').strip().upper()
-            if 'M' in val:
-                return float(val.replace('M', '')) * 1000000
-            elif 'K' in val:
-                return float(val.replace('K', '')) * 1000
-            try:
-                return float(val)
-            except ValueError:
-                return 0
-                
-        df['Premium Value'] = df['Premium'].apply(clean_number)
-        df['Volume Num'] = df['Volume'].apply(clean_number)
-        df['OI Num'] = df['Open Interest'].apply(clean_number)
-        
-        # Calculate Days to Expiration (DTE) - MIXED FORMAT FIX
-        today = pd.to_datetime('today').normalize()
-        
-        def safe_dte(date_str):
-            try:
-                # 1. Force to string and strip any hidden Google Sheets characters
-                clean_val = str(date_str).replace("'", "").strip()
-                
-                # 2. Skip empty rows
-                if clean_val.lower() in ['nan', 'none', 'nat', '']:
-                    return pd.NA
-                
-                # 3. Force Pandas to parse the date, ignoring format warnings
-                parsed_date = pd.to_datetime(clean_val, errors='coerce')
-                
-                # 4. If Pandas completely failed to read it, skip the math
-                if pd.isna(parsed_date):
-                    return pd.NA
-                    
-                # 5. Calculate exact days
-                return (parsed_date - today).days
-            except Exception:
-                return pd.NA
-                
-        # Apply the safe math to every row individually
-        df['DTE'] = df['Expiration'].apply(safe_dte)
-        
-        # EXACT BUCKETING AS REQUESTED
-        def categorize_term(dte):
-            if pd.isna(dte): return "Unknown"
-            if dte <= 7: return "0-7 Days (Immediate)"
-            if dte <= 45: return "8-45 Days (Tactical)"
-            return "45+ Days (Strategic)"
+# --- 2. CREATE THE MASTER TABS ---
+main_tab_options, main_tab_gov = st.tabs(["🌊 Options Whale Flow", "🏛️ Gov Contract Catalysts"])
+
+# ==========================================
+# --- MASTER TAB 1: OPTIONS FLOW VIEWER ---
+# ==========================================
+with main_tab_options:
+    @st.cache_data(ttl=60)
+    def load_data():
+        try:
+            SHEET_ID = "1goGTrEiqm7IYhD8mSZSBF2-kURu1MA55xYnvUH1sqhA" 
+            url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+            df = pd.read_csv(url)
             
-        df['DTE Bucket'] = df['DTE'].apply(categorize_term)
-        
-        return df
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
-        return pd.DataFrame()
+            def clean_number(val):
+                if pd.isna(val): return 0
+                val = str(val).replace('$', '').replace(',', '').strip().upper()
+                if 'M' in val:
+                    return float(val.replace('M', '')) * 1000000
+                elif 'K' in val:
+                    return float(val.replace('K', '')) * 1000
+                try:
+                    return float(val)
+                except ValueError:
+                    return 0
+                    
+            df['Premium Value'] = df['Premium'].apply(clean_number)
+            df['Volume Num'] = df['Volume'].apply(clean_number)
+            df['OI Num'] = df['Open Interest'].apply(clean_number)
+            
+            df['Expiration Date'] = pd.to_datetime(df['Expiration'], errors='coerce')
+            today = pd.to_datetime('today')
+            df['DTE'] = (df['Expiration Date'] - today).dt.days
+            
+            def categorize_term(dte):
+                if pd.isna(dte): return "Unknown"
+                if dte <= 7: return "0-7 Days (Immediate)"
+                if dte <= 45: return "8-45 Days (Tactical)"
+                return "45+ Days (Strategic)"
+                
+            df['DTE Bucket'] = df['DTE'].apply(categorize_term)
+            return df
+        except Exception:
+            return pd.DataFrame()
 
-df = load_data()
+    df = load_data()
 
-if df.empty:
-    st.warning("Waiting for data. Ensure flow_tracker.py is running and updating Google Sheets!")
-    st.stop()
-
-st.sidebar.header("Controls")
-
-# 1. Initialize filtered_df
-filtered_df = df.copy()
-
-# 2. Ticker Filter
-tickers = ["All"] + sorted(filtered_df['Ticker'].dropna().unique().tolist())
-selected_ticker = st.sidebar.selectbox("Filter by Ticker", tickers)
-
-# 2.5 Moneyness Filter (ITM/OTM)
-if "ITM/OTM" in df.columns:
-    moneyness_options = ["All", "ITM", "OTM"]
-    selected_moneyness = st.sidebar.selectbox("Filter by Moneyness", moneyness_options)
-    
-    if selected_moneyness != "All":
-        filtered_df = filtered_df[filtered_df['ITM/OTM'] == selected_moneyness]
-
-if selected_ticker != "All":
-    filtered_df = filtered_df[filtered_df['Ticker'] == selected_ticker]
-
-st.sidebar.divider()
-st.sidebar.markdown("Enjoying the data? [☕ Buy me a coffee!](https://buymeacoffee.com/deepchartlabs)")
-
-# 3. Create Tabs for DTE Buckets
-st.subheader("Total Premium by Ticker (Calls vs Puts)")
-tab1, tab2, tab3 = st.tabs(["0-7 Days (Immediate)", "8-45 Days (Tactical)", "45+ Days (Strategic)"])
-
-# Helper function to draw the Plotly horizontal bar chart
-def draw_bucket_chart(bucket_name):
-    bucket_data = filtered_df[filtered_df['DTE Bucket'] == bucket_name]
-    if not bucket_data.empty:
-        # Group by Ticker and Type to sum the premium
-        chart_data = bucket_data.groupby(["Ticker", "Type"])["Premium Value"].sum().reset_index()
-        
-        # Create the Plotly figure
-        fig = px.bar(
-            chart_data, 
-            x="Premium Value", 
-            y="Ticker", 
-            color="Type", 
-            orientation='h', 
-            barmode='stack',
-            color_discrete_map={"Call": "#3182ce", "Put": "#e53e3e"} # Blue for Calls, Red for Puts
-        )
-        
-        # --- NEW FIX: Dynamic Height and dtick ---
-        # Calculate dynamic height so labels don't overlap on busy days
-        num_tickers = len(chart_data['Ticker'].unique())
-        dynamic_height = max(400, num_tickers * 30) # Gives 30 pixels of breathing room per ticker
-        
-        # Clean up the layout and force ALL y-axis labels to show
-        fig.update_layout(
-            yaxis={
-                'categoryorder':'total ascending',
-                'dtick': 1  # <-- This forces EVERY single ticker label to appear
-            },
-            xaxis_title="Premium Value ($)",
-            yaxis_title="",
-            margin=dict(l=0, r=0, t=20, b=0),
-            height=dynamic_height # <-- Stretches the chart taller as more whales flow in
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
+    if df.empty:
+        st.warning("Waiting for data. Ensure flow_tracker.py is running and updating Google Sheets!")
     else:
-        st.info(f"No whale trades found in the {bucket_name} timeframe.")
+        st.sidebar.header("Options Controls")
+        
+        filtered_df = df.copy()
+        
+        tickers = ["All"] + sorted(filtered_df['Ticker'].dropna().unique().tolist())
+        selected_ticker = st.sidebar.selectbox("Filter by Ticker", tickers)
+        
+        if selected_ticker != "All":
+            filtered_df = filtered_df[filtered_df['Ticker'] == selected_ticker]
+        
+        st.subheader("Total Premium by Ticker (Calls vs Puts)")
+        
+        # Sub-tabs for the options flow
+        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["0-7 Days (Immediate)", "8-45 Days (Tactical)", "45+ Days (Strategic)"])
+        
+        def draw_bucket_chart(bucket_name):
+            bucket_data = filtered_df[filtered_df['DTE Bucket'] == bucket_name]
+            if not bucket_data.empty:
+                chart_data = bucket_data.groupby(["Ticker", "Type"])["Premium Value"].sum().reset_index()
+                
+                fig = px.bar(
+                    chart_data, 
+                    x="Premium Value", 
+                    y="Ticker", 
+                    color="Type", 
+                    orientation='h', 
+                    barmode='stack',
+                    color_discrete_map={"Call": "#3182ce", "Put": "#e53e3e"} 
+                )
+                
+                fig.update_layout(
+                    yaxis={'categoryorder':'total ascending'},
+                    xaxis_title="Premium Value ($)",
+                    yaxis_title="",
+                    margin=dict(l=0, r=0, t=20, b=0)
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(f"No whale trades found in the {bucket_name} timeframe.")
+        
+        with sub_tab1: draw_bucket_chart("0-7 Days (Immediate)")
+        with sub_tab2: draw_bucket_chart("8-45 Days (Tactical)")
+        with sub_tab3: draw_bucket_chart("45+ Days (Strategic)")
+        
+        st.divider()
+        st.subheader("Filtered Whale Sweeps")
+        display_cols = [c for c in ["Ticker", "Type", "Strike", "Expiration", "DTE Bucket", "Premium", "Volume", "Open Interest", "Time"] if c in filtered_df.columns]
+        st.dataframe(filtered_df[display_cols].iloc[::-1], use_container_width=True, hide_index=True)
 
-with tab1:
-    draw_bucket_chart("0-7 Days (Immediate)")
-with tab2:
-    draw_bucket_chart("8-45 Days (Tactical)")
-with tab3:
-    draw_bucket_chart("45+ Days (Strategic)")
 
-# 4. Data Table
-st.divider()
-st.subheader("Filtered Whale Sweeps")
-display_cols = [c for c in ["Ticker", "Type", "Strike", "Closing Price", "ITM/OTM", "Expiration", "DTE Bucket", "Premium", "Volume", "Open Interest", "Time"] if c in filtered_df.columns]
-st.dataframe(filtered_df[display_cols].iloc[::-1], use_container_width=True, hide_index=True)
+# ==========================================
+# --- MASTER TAB 2: GOV FLOW ENGINE ---
+# ==========================================
+with main_tab_gov:
+    st.header("Government Broad Market Discovery")
+    
+    # Gov Flow Configuration
+    API_URL = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
+    LOOKBACK_DAYS = 20
+    MIN_AWARD = 50000000
+    start_date = (datetime.now() - timedelta(days=LOOKBACK_DAYS)).strftime('%Y-%m-%d')
+    end_date = datetime.now().strftime('%Y-%m-%d')
+
+    # Bulletproof local file loader
+    @st.cache_data 
+    def load_brain_file():
+        try:
+            # Force Python to look in the exact directory this script is sitting in
+            current_folder = os.path.dirname(__file__)
+            file_path = os.path.join(current_folder, "master_list.csv")
+            return pd.read_csv(file_path)
+        except FileNotFoundError:
+            return None # Return None so the UI handles the error visibly
+
+    def fetch_government_data():
+        payload = {
+            "filters": {
+                "time_period": [{"start_date": start_date, "end_date": end_date, "date_type": "date_signed"}],
+                "award_amounts": [{"lower_bound": MIN_AWARD}],
+                "award_type_codes": ["A", "B", "C", "D"]
+            },
+            "fields": ["Award ID", "Recipient Name", "Award Amount", "Funding Agency", "Start Date"],
+            "limit": 100
+        }
+        headers = {'Content-Type': 'application/json'}
+        try:
+            response = requests.post(API_URL, data=json.dumps(payload), headers=headers)
+            response.raise_for_status()
+            return response.json().get('results', [])
+        except Exception as e:
+            st.error(f"API Error: {e}")
+            return []
+
+    # Gov Flow UI Logic
+    master_df = load_brain_file()
+
+    # --- THE ERROR CATCHER ---
+    if master_df is None:
+        st.error("🚨 Could not find 'master_list.csv'.")
+        st.info("Check your folder. Make sure the file isn't accidentally named 'master_list.csv.csv' or 'master_list.csv.txt'.")
+    else:
+        st.write(f"🧠 Brain loaded: Tracking {len(master_df)} tickers | ⏱️ {LOOKBACK_DAYS}-Day Lookback")
+        
+        if st.button("🚀 Run Broad Market Discovery Scan", type="primary"):
+            with st.spinner("Pinging federal database and cross-referencing Master List..."):
+                raw_awards = fetch_government_data()
+                actionable_hits = []
+                
+                for award in raw_awards:
+                    recipient = award.get('Recipient Name', '').upper()
+                    amount = award.get('Award Amount', 0)
+                    date = award.get('Start Date', 'Unknown')
+                    agency = award.get('Funding Agency', 'Unknown')
+                    
+                    for index, row in master_df.iterrows():
+                        keyword = str(row['Name']).upper()
+                        ticker = str(row['Ticker']).upper()
+                        
+                        if keyword in recipient:
+                            actionable_hits.append({
+                                "Ticker": ticker,
+                                "Date Signed": date,
+                                "Amount": f"${amount:,.2f}",
+                                "Government Entity": recipient,
+                                "Funding Agency": agency
+                            })
+                            break 
+                
+                if actionable_hits:
+                    st.success(f"Target Acquired: Found {len(actionable_hits)} massive catalysts.")
+                    st.dataframe(pd.DataFrame(actionable_hits), use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"Scan complete. No recent awards matched your Master List in the last {LOOKBACK_DAYS} days.")
